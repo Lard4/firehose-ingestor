@@ -13,15 +13,19 @@ import (
 	"github.com/bluesky-social/indigo/events/schedulers/sequential"
 	"github.com/bluesky-social/indigo/repo"
 	"github.com/gorilla/websocket"
+	"github.com/lard4/firehose-ingestor/internal/kafka"
+	"github.com/lard4/firehose-ingestor/internal/models"
 )
 
 type Runner struct {
-	client *Client
+	client   *Client
+	producer *kafka.KafkaProducer
 }
 
 func NewRunner(c *Client) *Runner {
 	return &Runner{
-		client: c,
+		client:   c,
+		producer: kafka.NewKafkaProducer(),
 	}
 }
 
@@ -29,11 +33,11 @@ func NewRunner(c *Client) *Runner {
 func (r *Runner) Run(ctx context.Context) error {
 	fmt.Println("Connecting to firehose at ", r.client.URL)
 
-	conn, _, err := websocket.DefaultDialer.Dial(r.client.URL, http.Header{})
+	wsocket, _, err := websocket.DefaultDialer.Dial(r.client.URL, http.Header{})
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer wsocket.Close()
 
 	fmt.Println("connected to bluesky firehose")
 
@@ -67,11 +71,17 @@ func (r *Runner) Run(ctx context.Context) error {
 					}
 
 					fmt.Printf("%+v\n", post)
-
-					r.client.Events <- Event{
+					event := models.Event{
 						Type: "post",
-						Post: *post,
+						Post: post,
 						DID:  commitEvent.Repo,
+					}
+
+					// put into a channel to provide backpressure (and we can move it out eventually to a dedicated worker pool)
+					r.client.Events <- event
+
+					if err := r.producer.Send(ctx, event); err != nil {
+						fmt.Println("Error sending event to Kafka:", err)
 					}
 				}
 			}
@@ -83,7 +93,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	sched := sequential.NewScheduler("myfirehose", rsc.EventHandler)
 
 	// blocking call to handle the firehose stream
-	events.HandleRepoStream(ctx, conn, sched, nil)
+	events.HandleRepoStream(ctx, wsocket, sched, nil)
 
 	<-ctx.Done()
 	fmt.Println("firehose client shutting down")

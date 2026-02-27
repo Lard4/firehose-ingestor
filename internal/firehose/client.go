@@ -1,21 +1,17 @@
 package firehose
 
-import "github.com/bluesky-social/indigo/api/bsky"
-
-type Event struct {
-	Type string
-	Post bsky.FeedPost
-	DID  string
-}
+import (
+	"github.com/lard4/firehose-ingestor/internal/models"
+)
 
 type Client struct {
 	URL    string
-	Events chan Event
+	Events chan models.Event
 }
 
 func NewClient() *Client {
 	return &Client{
 		URL:    "wss://relay1.us-east.bsky.network/xrpc/com.atproto.sync.subscribeRepos",
-		Events: make(chan Event, 1000),
+		Events: make(chan models.Event, 1000),
 	}
 }
