@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/lard4/firehose-ingestor/internal/firehose"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/lard4/firehose-ingestor/internal/firehose"
+	"github.com/lard4/firehose-ingestor/internal/kafka"
 )
 
 func main() {
@@ -24,7 +26,8 @@ func main() {
 	}()
 
 	client := firehose.NewClient()
-	runner := firehose.NewRunner(client)
+	kafkaProducer := kafka.NewKafkaProducer()
+	runner := firehose.NewRunner(client, kafkaProducer)
 	if err := runner.Run(ctx); err != nil {
 		fmt.Println("Error running firehose client:", err)
 	}

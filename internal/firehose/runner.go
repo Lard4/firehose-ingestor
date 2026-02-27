@@ -22,10 +22,10 @@ type Runner struct {
 	producer *kafka.KafkaProducer
 }
 
-func NewRunner(c *Client) *Runner {
+func NewRunner(c *Client, p *kafka.KafkaProducer) *Runner {
 	return &Runner{
 		client:   c,
-		producer: kafka.NewKafkaProducer(),
+		producer: p,
 	}
 }
 
