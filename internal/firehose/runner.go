@@ -1,0 +1,91 @@
+package firehose
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/bluesky-social/indigo/api/atproto"
+	"github.com/bluesky-social/indigo/api/bsky"
+	"github.com/bluesky-social/indigo/events"
+	"github.com/bluesky-social/indigo/events/schedulers/sequential"
+	"github.com/bluesky-social/indigo/repo"
+	"github.com/gorilla/websocket"
+)
+
+type Runner struct {
+	client *Client
+}
+
+func NewRunner(c *Client) *Runner {
+	return &Runner{
+		client: c,
+	}
+}
+
+// Connects to the firehose and starts processing events, sending them to the Events channel. It blocks until the context is cancelled.
+func (r *Runner) Run(ctx context.Context) error {
+	fmt.Println("Connecting to firehose at ", r.client.URL)
+
+	conn, _, err := websocket.DefaultDialer.Dial(r.client.URL, http.Header{})
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	fmt.Println("connected to bluesky firehose")
+
+	rsc := &events.RepoStreamCallbacks{
+		RepoCommit: func(commitEvent *atproto.SyncSubscribeRepos_Commit) error {
+
+			repoReader, err := repo.ReadRepoFromCar(ctx, bytes.NewReader(commitEvent.Blocks))
+			if err != nil {
+				// skip this commit if we can't read the repo data, but log the error
+				fmt.Println("Error reading repo data from commit event:", err)
+				return nil
+			}
+
+			for _, op := range commitEvent.Ops {
+				// fmt.Printf(" - %s record %s\n", op.Action, op.Path)
+				if op.Action == "create" && strings.HasPrefix(op.Path, "app.bsky.feed.post/") {
+					// this is the `did`
+					fmt.Println("Event from ", commitEvent.Repo)
+					fmt.Printf("  - new post created with path %s\n", op.Path)
+
+					_, rec, err := repoReader.GetRecord(ctx, op.Path)
+					if err != nil {
+						fmt.Println("Error getting record from repo reader:", err)
+						continue
+					}
+
+					post, ok := rec.(*bsky.FeedPost)
+					if !ok {
+						fmt.Println("Error asserting record to appbsky.FeedPost:", err)
+						continue
+					}
+
+					fmt.Printf("%+v\n", post)
+
+					r.client.Events <- Event{
+						Type: "post",
+						Post: *post,
+						DID:  commitEvent.Repo,
+					}
+				}
+			}
+
+			return nil
+		},
+	}
+
+	sched := sequential.NewScheduler("myfirehose", rsc.EventHandler)
+
+	// blocking call to handle the firehose stream
+	events.HandleRepoStream(ctx, conn, sched, nil)
+
+	<-ctx.Done()
+	fmt.Println("firehose client shutting down")
+	return nil
+}
