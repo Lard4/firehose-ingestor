@@ -52,7 +52,6 @@ func (r *Runner) Run(ctx context.Context) error {
 			}
 
 			for _, op := range commitEvent.Ops {
-				// fmt.Printf(" - %s record %s\n", op.Action, op.Path)
 				if op.Action == "create" && strings.HasPrefix(op.Path, "app.bsky.feed.post/") {
 					// this is the `did`
 					fmt.Println("Event from ", commitEvent.Repo)
@@ -70,15 +69,21 @@ func (r *Runner) Run(ctx context.Context) error {
 						continue
 					}
 
-					fmt.Printf("%+v\n", post)
-					event := models.Event{
-						Type: "post",
-						Post: post,
-						DID:  commitEvent.Repo,
+					var cids []string
+					if post.Embed != nil && post.Embed.EmbedImages != nil {
+						for _, img := range post.Embed.EmbedImages.Images {
+							cids = append(cids, img.Image.Ref.String())
+						}
 					}
 
-					// put into a channel to provide backpressure (and we can move it out eventually to a dedicated worker pool)
-					r.client.Events <- event
+					event := models.Event{
+						Type: "post",
+						DID:  commitEvent.Repo,
+						Path: op.Path,
+					}
+
+					// put into a channel to provide backpressure (and we can move the publishing out eventually to a dedicated worker pool)
+					// r.client.Events <- event
 
 					if err := r.producer.Send(ctx, event); err != nil {
 						fmt.Println("Error sending event to Kafka:", err)

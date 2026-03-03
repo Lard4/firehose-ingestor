@@ -1,10 +1,19 @@
 package models
 
-import "github.com/bluesky-social/indigo/api/bsky"
-
 type Event struct {
-	Type string
-	// May be large, so copying it every time through the channel is wasteful
-	Post *bsky.FeedPost
-	DID  string
+	CreatedAt string `json:"createdAt"`
+	Type      string `json:"type"`
+	DID       string `json:"did"`
+	Path      string `json:"path"`
+}
+
+type Post struct {
+	Handle    string   `json:"handle"`
+	Content   string   `json:"content"`
+	Likes     int      `json:"likes"`
+	Quotes    int      `json:"quotes"`
+	Replies   int      `json:"replies"`
+	Reposts   int      `json:"reposts"`
+	ImageUrls []string `json:"imageUrls"`
+	Parent    *Post    `json:"parent,omitempty"`
 }

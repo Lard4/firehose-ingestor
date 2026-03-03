@@ -40,6 +40,15 @@ docker run -d --name broker \
   apache/kafka:latest
 ```
 
+Open a shell in the broker container:
+`docker exec --workdir /opt/kafka/bin/ -it broker sh`
+
+Create the topic manually, if it doesn't exist:
+`./kafka-topics.sh --bootstrap-server localhost:9092 --create --topic bluesky-posts`
+
+Listen to the topic (optionally with `--from-beginning`):
+`./kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic bluesky-posts`
+
 ## Running the ingestor
 
 ```bash
@@ -59,7 +68,7 @@ Messages are published to the `bluesky-posts` topic.
 | Field | Value |
 |-------|-------|
 | Key   | The author's DID (e.g. `did:plc:abc123`) |
-| Value | <subject to change> |
+| Value | \<subject to change\> |
 
 Using the DID as the key ensures all posts from the same user are routed to the same partition, preserving per-user ordering.
 

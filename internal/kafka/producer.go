@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/lard4/firehose-ingestor/internal/models"
@@ -22,18 +23,23 @@ func NewKafkaProducer() *KafkaProducer {
 }
 
 func (p *KafkaProducer) Send(ctx context.Context, event models.Event) error {
-	postTime, err := time.Parse(time.RFC3339, event.Post.CreatedAt)
+	postTime, err := time.Parse(time.RFC3339, event.CreatedAt)
 	if err != nil {
 		postTime = time.Now() // fallback
+	}
+
+	val, err := json.Marshal(event)
+	if err != nil {
+		return err
 	}
 
 	return p.writer.WriteMessages(
 		ctx,
 		kafka.Message{
-			// Important: We use the DID as the key so that all posts from the same user go to the same partition, which keeps the ordering of their posts consistent.
-			Key: []byte(event.DID),
-			// For now, the value is just the post text, but we may want to serialize since it could be an image.
-			Value: []byte(event.Post.Text),
+			// Important: We use the DID as the key so that all posts from the same user go to the same partition,
+			// which keeps the ordering of their posts consistent.
+			Key:   []byte(event.DID),
+			Value: val,
 			Time:  postTime,
 		},
 	)
