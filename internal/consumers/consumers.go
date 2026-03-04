@@ -64,7 +64,7 @@ func (kc *KafkaConsumer) Start(ctx context.Context) error {
 			fmt.Printf("Error marshalling post to JSON: %v\n", err)
 		}
 
-		fmt.Println("Sending post to HTTP server: ", string(jsonPayload))
+		//fmt.Println("Sending post to HTTP server: ", string(jsonPayload))
 		kc.server.Send(jsonPayload)
 	}
 

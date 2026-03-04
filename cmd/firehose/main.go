@@ -31,7 +31,7 @@ func main() {
 	defer kafkaProducer.Close()
 
 	runner := firehose.NewRunner(client, kafkaProducer)
-	if err := runner.Run(ctx); err != nil {
+	if err := runner.Start(ctx); err != nil {
 		fmt.Println("Error running firehose client:", err)
 	}
 

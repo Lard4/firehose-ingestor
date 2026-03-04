@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/bluesky-social/indigo/api/atproto"
 	"github.com/bluesky-social/indigo/api/bsky"
@@ -29,8 +30,25 @@ func NewRunner(c *Client, p *kafka.KafkaProducer) *Runner {
 	}
 }
 
+func (r *Runner) Start(ctx context.Context) error {
+	for {
+		fmt.Println("Connecting to firehose at", r.client.URL)
+		if err := r.connect(ctx); err != nil {
+			fmt.Println("Firehose connection error:", err)
+		}
+
+		select {
+		case <-ctx.Done():
+			fmt.Println("Firehose runner shutting down")
+			return nil
+		case <-time.After(5 * time.Second):
+			fmt.Println("Reconnecting to firehose...")
+		}
+	}
+}
+
 // Connects to the firehose and starts processing events, sending them to the Events channel. It blocks until the context is cancelled.
-func (r *Runner) Run(ctx context.Context) error {
+func (r *Runner) connect(ctx context.Context) error {
 	fmt.Println("Connecting to firehose at ", r.client.URL)
 
 	wsocket, _, err := websocket.DefaultDialer.Dial(r.client.URL, http.Header{})

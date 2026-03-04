@@ -9,12 +9,15 @@ import (
 )
 
 type Server struct {
-	mu sync.Mutex
-	ch chan []byte
+	mu      sync.Mutex
+	// essentially just a Set of channels (one for each client that connects)
+	clients map[chan []byte]struct{}
 }
 
 func NewServer() *Server {
-	return &Server{}
+	return &Server{
+		clients: make(map[chan []byte]struct{}),
+	}
 }
 
 func (s *Server) Start(ctx context.Context) {
@@ -22,7 +25,7 @@ func (s *Server) Start(ctx context.Context) {
 	mux.HandleFunc("/feed", s.HandleFeed)
 
 	srv := &http.Server{
-		Addr:    ":5005",
+		Addr:    ":3005",
 		Handler: mux,
 	}
 
@@ -37,13 +40,15 @@ func (s *Server) Start(ctx context.Context) {
 		}
 	}()
 
-	fmt.Println("HTTP server started on :5005")
+	fmt.Println("HTTP server started on :3005")
 }
 
 func (s *Server) HandleFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "ngrok-skip-browser-warning")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -54,8 +59,16 @@ func (s *Server) HandleFeed(w http.ResponseWriter, r *http.Request) {
 	// register this client
 	ch := make(chan []byte, 100)
 	s.mu.Lock()
-	s.ch = ch
+	// struct{}{} is a weird go idiom that takes up zero bytes 
+	s.clients[ch] = struct{}{}
+	fmt.Printf("Adding new channel to map %#v\n", s.clients)
 	s.mu.Unlock()
+
+	defer func() {
+        s.mu.Lock()
+        delete(s.clients, ch)
+        s.mu.Unlock()
+    }()
 
 	// wait for disconnect or new messages
 	for {
@@ -64,19 +77,19 @@ func (s *Server) HandleFeed(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "data: %s\n\n", msg)
 			flusher.Flush()
 		case <-r.Context().Done():
-			s.mu.Lock()
-			s.ch = nil
-			s.mu.Unlock()
 			return
 		}
 	}
 }
 
 func (s *Server) Send(data []byte) {
-	fmt.Println("Sending data:", string(data))
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.ch != nil {
-		s.ch <- data
-	}
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    for ch := range s.clients {
+        select {
+        case ch <- data:
+        default:
+            // channel full, drop for this client
+        }
+    }
 }
